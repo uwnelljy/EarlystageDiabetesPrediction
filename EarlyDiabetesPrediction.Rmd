@@ -1,0 +1,320 @@
+---
+title: "Early Stage Diabetes Prediction"
+author: "Yao Jiang"
+output: bookdown::html_document2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+rm(list=ls())
+library(tidyverse)
+library(ggpubr)
+library(glmnet)
+library(class)
+library(e1071)
+library(randomForest)
+library(pROC)
+library(ggplot2)
+library(neuralnet)
+```
+
+**Abstract**: To predict the likelihood of having diabetes on the basis of current symptoms, I plan to apply logistic regression, penalized logistic regression, random forest and KNN on the dataset, which contains the sign and symptoms of newly diabetic or would be diabetic patient. In this work, I plan to use such a dataset of 520 instances and 17 variables. 10-fold cross-validation techniques would be used for validation and to tune parameters. Finally, a commonly accessible, user-friendly tool for the end-user to check the risk of having diabetes from assessing the symptoms and useful tips to control the risk factors would be proposed.
+
+**Keywords**: diabetes; classification; machine learning; prediction
+
+# Introduction
+
+Diabetes is one of the fastest-growing chronic life-threatening diseases that have already affected 422 million people worldwide according to the report of the World Health Organization (WHO), in 2018. Diabetes can have life-threatening consequences for the cardiovascular, renal, and nervous systems if it is not treated. Due to the presence of a relatively long asymptomatic phase, early detection of diabetes is always desired for a clinically meaningful outcome. Around 50% of all people suffering from diabetes are undiagnosed because of its long-term asymptomatic phase. The early diagnosis of diabetes is only possible by proper assessment of both common and less common sign symptoms, which could be found in different phases from disease initiation up to diagnosis. So it is reasonable to develop a diagnostic multivariate prediction model for patients.
+
+The project aims to build a prediction model for patients to check the risk of having diabetes from assessing the related symptoms and to analyze how different classification models considering the performance as well as complexity. The project was conducted using `R`. The main contribution is to present the results of 4 classification methods for early diagnosis of diabetes, and the method recommended to use is the random forest, which achieves 97.5% accuracy. At last, we identify some symptoms which play an essential part in the prediction result and consequently provide useful tips to control the risk factors.
+
+# Materials and methods
+
+The data was collected using direct questionnaires from the patients of Sylhet Diabetes Hospital in Sylhet, Bangladesh, and approved by a doctor, which is available on the [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Early+stage+diabetes+risk+prediction+dataset.). The related paper is [Likelihood Prediction of Diabetes at Early Stage Using Data Mining Techniques (Islam et al., 2019)](https://link.springer.com/chapter/10.1007/978-981-13-8798-2_12).
+
+The participants are 520 Patients of Sylhet Diabetes Hospital ranging from 20 to 65 years old. The predictors used in the analysis are participants' age and sex and whether they have showen symptoms before diagnosis, including polyuria, polydipsia, sudden weight loss, weakness, polyphagia, genital thrush, visual blurring, itching, irritability, delayed healing, partial paresis, muscle stiffness, alopecia, obesity. If the patient has a specific symptom, then that variable would equal to 1, otherwise equal to 0. All the symptoms are the patients' current symptoms. The response in the dataset is that whether the patient is a current diabetic or not and is labeled as "positive" and "negative" for the corresponding diagnosis. The outcome I plan to predict is whether a patient would be an early stage diabetic.
+
+We first perform exploratory analysis on the whole dataset to understand the distribution of Age across the samples. This could help us create Age bands and determine how representative is the training dataset of the actual problem domain. We also want to know the distribution of categorical features and how well each feature correlates with class and the correlation relationship between predictors.
+
+Then we apply four models, including logistic regression, logistic regression with lasso penalty (lasso), k-nearest neighbor (KNN), and random forest, which are shown as follows:
+
+-    Logistic regression: From a traditional statistical perspective, we want to test the association between variables and response (positive or negative) and choose reasonable variables for prediction. We first apply logistic regression on the whole dataset and see the association to decide the variables we should include in the later analysis. Then we split the dataset into training and test set by 8:2 proportion, train the data on the training set and measure the performance of the model on the test set.
+
+-    Lasso: We use logistic loss plus l1 penalty for this project. We first tune the parameter $\lambda$ using a 10-fold cross-validation technique. The data set is then iterated over each fold, using it to test the model and the remaining k-1 portions for training. Then apply this model on the same training set as Logistic regression and measure its performance on the same test set. Lasso enables us to identify the important variables.
+
+-    KNN: First, the parameter k is determined using 10-fold cross-validation, and this is the number of neighbors for a given point. Then, through distance functions, it calculates the distance of the new data that will be included in the sample data set. It is assigned to the prevalent class of k neighbors.
+
+-    Random forest: We use 10-fold cross-validation to select the parameters in the tree model, especially the max depth, because if the depth is large, overfitting might happen. Random Forest adds additional randomness to the model while growing the trees. The parameters should also be tuned.
+
+We then compare the results of different algorithms and decide which one performs better or worse. The performance metrics including classification accuracy (CA), Precision, Recall/Sensitivity, Specificity and F1-Score would be used. These performance metrics are selected since they are used by most of the related work. The metrics are computed as follows:
+$$
+\begin{aligned}
+CA = \frac{TP+TN}{TP+TN+FP+FN} \\
+Precision = \frac{TP}{TP+FP} \\
+Sensitivity = \frac{TP}{TP+FN} \\
+Specificity = \frac{TN}{TN+FP} \\
+F_1 = 2 \frac{Precision \times Sensitivity}{Precision + Sensitivity}
+\end{aligned}
+$$
+
+At last, we rank the importance of each predictor on the basis of machine learning algorithms we use so that we could identify which symptom plays the most important role in early stage diabetes diagnosis.
+
+```{r metrics}
+ca <- function(table){
+  return((table[1]+table[4])/sum(table))
+}
+precision <- function(table){
+  return(table[4]/(table[4]+table[2]))
+}
+sensitivity <- function(table){
+  return(table[4]/(table[4]+table[3]))
+}
+specificity <- function(table){
+  return(table[1]/(table[1]+table[2]))
+}
+f1 <- function(precision, sensitivity){
+  return(2*precision*sensitivity/(precision+sensitivity))
+}
+```
+
+# Results
+
+We first present descriptive results. The characteristics of participants is shown in Table 1 and Figure 1 below. The table shows the distribution of categorical variables. Positive patients are more than negative patients in this data. The figure shows the distribution of continuous variable Age among each class. Positive patients have a large age range, and the median age is slightly higher than negative patients. 
+
+We believe that some predictor has a close relationship between age. For example, older people tend to suffer more from muscle stiffness or visual blurring. To identify such a relationship, we present bar plots in Figure 2, which show the relationship between age and visual.blurring, age and muscle.stiffness, age and gender, age and class. As age increases, more patients tend to have visual blurring and muscle stiffness symptoms.
+
+```{r}
+diabetes <- read.csv('~/Documents/R/diabetes_data_upload.csv')
+diabetes <- diabetes %>%
+  mutate(Gender = as.factor(ifelse(Gender=='Male', 1, 0)),
+         Polyuria = as.factor(ifelse(Polyuria=='Yes', 1, 0)),
+         Polydipsia = as.factor(ifelse(Polydipsia=='Yes', 1, 0)),
+         sudden.weight.loss = as.factor(ifelse(sudden.weight.loss=='Yes', 1, 0)),
+         weakness = as.factor(ifelse(weakness=='Yes', 1, 0)),
+         Polyphagia = as.factor(ifelse(Polyphagia=='Yes', 1, 0)),
+         Genital.thrush = as.factor(ifelse(Genital.thrush=='Yes', 1, 0)),
+         visual.blurring = as.factor(ifelse(visual.blurring=='Yes', 1, 0)),
+         Itching = as.factor(ifelse(Itching=='Yes', 1, 0)),
+         Irritability = as.factor(ifelse(Irritability=='Yes', 1, 0)),
+         delayed.healing = as.factor(ifelse(delayed.healing=='Yes', 1, 0)),
+         partial.paresis = as.factor(ifelse(partial.paresis=='Yes', 1, 0)),
+         muscle.stiffness = as.factor(ifelse(muscle.stiffness=='Yes', 1, 0)),
+         Alopecia = as.factor(ifelse(Alopecia=='Yes', 1, 0)),
+         Obesity = as.factor(ifelse(Obesity=='Yes', 1, 0)), 
+         class = as.factor(ifelse(class=='Positive', 1, 0)))
+table <- summary(diabetes[, -1])
+knitr::kable(t(table),
+             caption = 'Count of categorical variables')
+```
+
+```{r ageboxplot, fig.cap='Boxplot of age', fig.height=2, fig.width=4, fig.align='center'}
+ggplot(data = diabetes) +
+  geom_boxplot(mapping = aes(x=class, y=Age)) +
+  scale_x_discrete()
+```
+
+```{r vaage, include=T, fig.cap='Barplot of age under some symptoms', fig.height=5, fig.width=5, fig.align='center'}
+vb <- ggplot(data=diabetes)+
+  geom_histogram(mapping=aes(x=Age, fill=visual.blurring), binwidth=3) +
+  scale_fill_manual(values = c('orange', 'chocolate'),
+                    guide = guide_legend(nrow = 1, label.position = 'bottom', keywidth = 2)) +
+  theme(legend.position = 'top')
+mu <- ggplot(data=diabetes)+
+  geom_histogram(mapping=aes(x=Age, fill=muscle.stiffness), binwidth=3) +
+  scale_fill_manual(values = c('orange', 'chocolate'),
+                    guide = guide_legend(nrow = 1, label.position = 'bottom', keywidth = 2)) +
+  theme(legend.position = 'top')
+se <- ggplot(data=diabetes)+
+  geom_histogram(mapping=aes(x=Age, fill=Gender), binwidth=3) +
+  scale_fill_manual(values = c('orange', 'chocolate'),
+                    guide = guide_legend(nrow = 1, label.position = 'bottom', keywidth = 2)) +
+  theme(legend.position = 'top')
+cla <- ggplot(data=diabetes)+
+  geom_histogram(mapping=aes(x=Age, fill=class), binwidth=3) +
+  scale_fill_manual(values = c('orange', 'chocolate'),
+                    guide = guide_legend(nrow = 1, label.position = 'bottom', keywidth = 2)) +
+  theme(legend.position = 'top')
+
+ggarrange(vb, mu, se, cla, labels=c('A', 'B', 'C', 'D'), 
+          ncol = 2, nrow = 2)
+```
+
+Next, we randomly split data into 10 folds and train the models including logistic regression, lasso, KNN, and random forest, on the whole data except for the $k$th ($k=1, 2, \ldots, 10$) fold and measure their performance on the $k$th fold. So that the training set and test set for all the models are the same. Using a 10-fold Cross-Validation technique, we ensure that all the data has been used for training and testing to prevent over-fitting and under-fitting.
+
+In this section, we present the modeling results. The confusion matrix of each model is presented in tables in order to calculate the performance metrics.
+
+-   In the first trail, we apply the logistic regression/classification on the whole dataset and identified the association between variable and response, which is shown in Table 3 below. For some variables like sudden.weight.loss, we don't have strong evidence to say there is an association (p=0.73), and the same is for weakness, visual.blurring, delayed.healing, muscle.stiffness, Alopecia, and Obesity. However, we should still include them in our prediction analysis. The first reason is that no linear association doesn't mean no association. The second is that all the symptoms in this dataset are common or less common present at diagnosis. Then we measure the performance of this model using 10-fold cross-validation. The Logistic classifier correctly predicts 480 instances out of 520, with a success rate of 92.31%. Table 4 presents 181 true negatives against 19 false negatives and 299 true positives against 21 false positives.
+
+    ```{r logisticregression, warning=F, message=F}
+    LRmodel <- glm(class~., family = 'binomial', data = diabetes)
+    # table of coefficients
+    LRcoef <- data.frame('Feature'=colnames(diabetes)[-17],
+                     'Estimate'=round(as.numeric(LRmodel$coefficients[-1]), 2),
+                     'lwr.95'=round(as.numeric(confint(LRmodel)[, 1][-1]), 2),
+                     'upr.95'=round(as.numeric(confint(LRmodel)[, 2][-1]), 2),
+                     'p'=round(as.numeric(coef(summary(LRmodel))[, 4][-1]), 2))
+    knitr::kable(LRcoef,
+                 caption = 'Association between variables and response using logistic regression')
+    ```
+
+    ```{r}
+    #### logistic regression
+    # 10-fold cross validation splitting
+    set.seed(1111)
+    n <- dim(diabetes)[1]
+    p <- dim(diabetes)[2]
+    k <- 10
+    split.sample <- sample(1:k, n, replace = TRUE)
+    # estimate
+    LRall <- data.frame('Class'=NA, 'Prediction'=NA)
+    for(i in 1:k){
+      TrainDiabetes <- diabetes[split.sample!=i, ]
+      TestDiabetes <- diabetes[split.sample==i, ]
+      LRtrain <- glm(class~., family = 'binomial', data = TrainDiabetes)
+      LRprediction <- as.factor(ifelse(predict(LRtrain, TestDiabetes[, -17], type = 'response') >= 0.5, 
+                                       'Positive', 'Negative'))
+      LRpredictiondf <- data.frame('Class'=TestDiabetes[, 17],
+                                   'Prediction'=LRprediction)
+      LRall <- rbind(LRall, LRpredictiondf)
+    }
+    LRallTable <- table(LRall)
+    rownames(LRallTable) <- c('Negative', 'Positive')
+    knitr::kable(addmargins(LRallTable),
+                 caption = 'Confusion matrix of logistic regression')
+    ```
+
+-   In the second trail, we apply the logistic regression/classification with lasso penalty on the dataset. We first use 10-fold cross-validation on the whole data to tune the parameter, which is shown in Figure 3 below. As $\lambda$ increases, the number of variables in the model decreases, and the misclassification error increases. The optimal parameter we would select is the one that has the lowest misclassification error and the smallest number of variables in the subset, which is shown as the second dash line in Figure 3. The lasso classification correctly predicts 473 instances out of 520, with a success rate of 90.96%. Table 5 presents 177 true negatives against 23 false negatives and 296 true positives against 24 false positives.
+
+    ```{r lasso, fig.cap='Cross-validation process of lasso', fig.height=5, fig.width=7, fig.align='center'}
+    set.seed(1234)
+    DiabetesX <- model.matrix(class~., diabetes)
+    cvfit <- cv.glmnet(DiabetesX, diabetes$class, 
+                       family = 'binomial', type.measure = 'class', 
+                       nfolds = 10, alpha = 1)
+    lambdaLasso <- cvfit$lambda.1se
+    plot(cvfit, main = '10-fold cross validation with lasso')
+    LassoAll <- data.frame('Class'=NA, 'Prediction'=NA)
+    # 10-fold cross-validation
+    for(i in 1:k){
+      TrainDiabetes <- diabetes[split.sample!=i, ]
+      TestDiabetes <- diabetes[split.sample==i, ]
+      # train the model
+      TrainDiabetesX <- model.matrix(class~., TrainDiabetes)
+      LassoModel <- glmnet(TrainDiabetesX, TrainDiabetes$class,
+                         family = 'binomial', type.measure = 'class',
+                         lambda = lambdaLasso, alpha = 1)
+      # LassoCoef <- as.data.frame(coef(LassoModel)[-c(1, 2),])
+      # colnames(LassoCoef) <- 'Estimate'
+      LassoPrediction <- as.factor(predict(LassoModel, model.matrix(class~., TestDiabetes), type = 'class'))
+      LassoAll <- rbind(LassoAll, data.frame('Class'=TestDiabetes$class,
+                                             'Prediction'=LassoPrediction))
+    }
+    LassoTable <- table(LassoAll)
+    rownames(LassoTable) <- c('Negative', 'Positive')
+    colnames(LassoTable) <- c('Negative', 'Positive')
+    knitr::kable(addmargins(LassoTable),
+                 caption = 'Confusion matrix of lasso')
+    ```
+
+-   In the third trail, we first tune the parameter of KNN over 10-fold cross-validation. Then we apply the KNN on the training set to train the model, and measure the performance on the test set. The KNN classification correctly predicts 484 instances out of 520, with a success rate of 93.08%. Table 6 presents 192 true negatives against 8 false negatives and 292 true positives against 28 false positives.
+
+    ```{r}
+    # need to reload the data, otherwise knn would have error.
+    diabetesKnn <- read.csv('~/Documents/R/diabetes_data_upload.csv') %>%
+      mutate(Gender = ifelse(Gender == 'Female', 0, 
+                             ifelse(Gender == 'Male', 1, NA)),
+             class = as.factor(ifelse(class == 'Positive', 1, 
+                                      ifelse(class == 'Negative', 0, NA))))
+    column_names <- colnames(diabetesKnn)
+    for (name in column_names[3:16]){
+      diabetesKnn[name] <- ifelse(diabetesKnn[name] == 'Yes', 1, 0)
+    }
+    cvknn <- tune.knn(diabetesKnn[, -17], diabetesKnn[, 17], 
+                      k=1:20, tunecontrol=tune.control(sampling='boot'), cross=10)
+    KnnAll <- data.frame('Class'=NA, 'Prediction'=NA)
+    for(i in 1:k){
+      TrainDiabetes <- diabetesKnn[split.sample!=i, ]
+      TrainDiabetes <- diabetesKnn[split.sample!=i, ]
+      TestDiabetes <- diabetesKnn[split.sample==i, ]
+      Knnprediction <- knn(TrainDiabetes[, -17], TestDiabetes[, -17],
+                           TrainDiabetes[, 17], k=cvknn$best.parameters$k)
+      KnnAll <- rbind(KnnAll, data.frame('Class'=TestDiabetes$class,
+                                         'Prediction'=Knnprediction))
+    }
+    KnnTable <- table(KnnAll)
+    rownames(KnnTable) <- c('Negative', 'Positive')
+    colnames(KnnTable) <- c('Negative', 'Positive')
+    knitr::kable(addmargins(KnnTable),
+                 caption = 'Confusion matrix of KNN')
+    ```
+
+-   In the fourth trail, we apply random forest, which correctly predicts 507 instances out of 520, with a success rate of 97.5%. Table 7 presents 195 true negatives against 5 false negatives and 312 true positives against 8 false positives.
+
+    ```{r, message=F, include=F}
+    set.seed(9999)
+    forest.para <- tuneRF(diabetes[, -17], diabetes[, 17],
+                          ntreeTry = 100, stepFactor = 0.5)
+    ```
+    
+    ```{r}
+    RFall <- data.frame('Class'=NA, 'Prediction'=NA)
+    set.seed(9999)
+    for(i in 1:k){
+      TrainDiabetes <- diabetes[split.sample!=i, ]
+      TestDiabetes <- diabetes[split.sample==i, ]
+      RFmodel <- randomForest(class~., data = TrainDiabetes,
+                            mtry = 4, ntree = 100, importance = TRUE)
+      RFprediction <- predict(RFmodel, TestDiabetes[, -17], type = 'class')
+      RFall <- rbind(RFall, data.frame('Class'=TestDiabetes[, 17],
+                                       'Prediction'=RFprediction))
+    }
+    RFtable <- table(RFall)
+    rownames(RFtable) <- c('Negative', 'Positive')
+    colnames(RFtable) <- c('Negative', 'Positive')
+    knitr::kable(addmargins(RFtable),
+                 caption = 'Confusion matrix of random forest')
+    ```
+
+-   We compared each method based on several performance metrics including CA (classification accuracy), precision, sensitivity, specificity, and F1 score, which is presented in Table 8. We choose different metric for a different clinical purposes. Here we use the F1 score as the measurement and Figure 2 shows that random forest is the best among all the methods for this prediction problem and lasso scored the lowest F1 score with 92.6%.
+    
+    ```{r barplot, fig.cap='F1 score comparison', fig.height=3, fig.width=5, fig.align='center'}
+    # compare result
+    method <- c('Logistic regression', 'Lasso', 'KNN', 'Random forest')
+    caall <- c(ca(LRallTable), ca(LassoTable), ca(KnnTable), ca(RFtable))
+    precisionall <- c(precision(LRallTable), precision(LassoTable),
+                      precision(KnnTable), precision(RFtable))
+    sensitivityall <- c(sensitivity(LRallTable), sensitivity(LassoTable),
+                        sensitivity(KnnTable), sensitivity(RFtable))
+    specificityall <- c(specificity(LRallTable), specificity(LassoTable),
+                        specificity(KnnTable), specificity(RFtable))
+    f1all <- f1(precisionall, sensitivityall)
+    result <- data.frame('Method'=method,
+                         'CA'=round(caall, 3),
+                         'Precision'=round(precisionall, 3),
+                         'Sensitivity'=round(sensitivityall, 3),
+                         'Specificity'=round(specificityall, 3),
+                         'F1 score'=round(f1all, 3))
+    knitr::kable(result,
+                 caption = 'Performance metrics')
+    # compare f1 score
+    ggplot(data = result) +
+      geom_col(mapping = aes(x=Method, y=F1.score))
+    ```
+
+-   We also rank the importance of each variable in this dataset from the random forest model. Figure 3 presents that Polyuria and Polydipsia are the top 2 most important variables in predicting early stage diabetes among all the participants, which means that the two symptoms are the most prevalent among the newly diabetic participants. Age and Gender are the top 4, muscle.stiffness and obesity are the least important.
+
+    ```{r variable, fig.cap='Importance of variables from random forest model', fig.height=5, fig.width=5, fig.align='center'}
+    varImpPlot(RFmodel, type=2)
+    ```
+
+# Conclusion
+
+When dealing with diseases such as diabetes it is essential to provide an early and accurate diagnosis. A delayed diagnosis of diabetes can lead to severe health consequences if vigilance is not applied. So, the prediction model must be as highly accurate as possible. The cost of a false negative is enormously higher than a false positive. Random forest is the best with an accuracy of 97.5% from this perspective because it has the lowest false-negative rate (5 false negatives over 200 predicted negatives).
+
+Logistic regression and lasso require the observations to be independent of each other. In other words, the observations should not come from repeated measurements or matched data. This assumption would be violated when different participants come from the same family. This could also be one limitation of this dataset. KNN is a nonparametric learning algorithm. It does not make any assumptions on the underlying data distribution. But it assumes that similar things exist in close proximity since we compute the euclidean distance between observations. In random forest, we don't need to make any assumptions at all. It has no model underneath, and the only assumption that it relies upon is that sampling is representative. But this is usually a common assumption.
+
+All the studies have their own limitations. For this project, a larger dataset is needed to better perform cross-validation and the performance of each model. This data does not consider family history of diabetes, consumption of certain prescription drugs, smoking, and sleep deprivation, which are both predictors of diabetes. All the data come from the patients of Sylhet Diabetes Hospital in Sylhet, Bangladesh, thus the results might be only applicable for patients living in that area. The best model here is random forest. While it may fit best for this data set, it might not be the case when applied to another.
+        
+Some of the methods like KNN don't generate interpretable results or present a clear explanation of the parameters used. Even though random forest achieves the best performance among the other 3 methods, it is not an interpretable one. This is because that random forest is generated using bootstrapping many trees and the prediction result is averaged over these trees.
+
+Severe acute respiratory syndrome SARS-CoV-2 is the virus responsible for the coronavirus disease 2019 (COVID-19). This pandemic is still going on today. The future focus of this project could be the impact of COVID-19 on the early stage diabetes diagnosis. It is reasonable and meaningful because, during this pandemic, most of the medical resources are taken by respiratory patients, people are required to stay at home. In general, people with diabetes are more likely to have severe symptoms and complications when infected with any virus, combined with other chronic conditions such as heart disease, which increases their risk of getting those severe complications if infected with COVID-19. If such data is available, I think it would be an interesting topic.
