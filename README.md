@@ -1,2 +1,2 @@
 # EarlystageDiabetesPrediction
-A basic example of machine learning in biomedical dateset.
+A basic example of machine learning on biomedical dateset.
