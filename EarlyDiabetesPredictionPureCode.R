@@ -186,15 +186,62 @@ RFtable <- table(RFall)
 rownames(RFtable) <- c('Negative', 'Positive')
 colnames(RFtable) <- c('Negative', 'Positive')
 
+## SVM
+# Tuning parameters
+set.seed(1123)
+best_parameters <- tune.svm(class~., data = diabetes, 
+                            gamma = seq(0, 0.15, by=0.1),
+                            cost = seq(1, 10, by=1),
+                            kernel = 'radial',
+                            tunecontrol = tune.control(cross = 10))
+best_gamma <- best_parameters$best.parameters[1]
+best_cost <- best_parameters$best.parameters[2]
+# Modeling
+SVMall <- data.frame('Class'=NA, 'Prediction'=NA)
+for(i in 1:k){
+  TrainDiabetes <- diabetes[split.sample!=i, ]
+  TestDiabetes <- diabetes[split.sample==i, ]
+  SVMmodel <- svm(class~., data = TrainDiabetes, 
+                  gamma = best_gamma, cost = best_cost,
+                  type = 'C-classification', kernel = 'radial')
+  SVMprediction <- predict(SVMmodel, TestDiabetes[, -17], type = 'class')
+  SVMall <- rbind(SVMall, data.frame('Class'=TestDiabetes[, 17],
+                                     'Prediction'=SVMprediction))
+}
+SVMtable <- table(SVMall)
+rownames(SVMtable) <- c('Negative', 'Positive')
+colnames(SVMtable) <- c('Negative', 'Positive')
+
+## Naive Bayes classifier
+NBall <- data.frame('Class'=NA, 'Prediction'=NA)
+for(i in 1:k){
+  TrainDiabetes <- diabetes[split.sample!=i, ]
+  TestDiabetes <- diabetes[split.sample==i, ]
+  NBmodel <- naiveBayes(class~., data = TrainDiabetes, 
+                        type = 'class')
+  NBprediction <- predict(NBmodel, TestDiabetes[, -17], 
+                          type = 'class')
+  NBall <- rbind(NBall, data.frame('Class'=TestDiabetes[, 17],
+                                   'Prediction'=NBprediction))
+}
+NBtable <- table(NBall)
+rownames(NBtable) <- c('Negative', 'Positive')
+colnames(NBtable) <- c('Negative', 'Positive')
+
 ## Compare results
-method <- c('Logistic regression', 'Lasso', 'KNN', 'Random forest')
-caall <- c(ca(LRallTable), ca(LassoTable), ca(KnnTable), ca(RFtable))
+method <- c('Logistic regression', 'Lasso', 'KNN', 'Random forest',
+            'SVM', 'Naive Bayes')
+caall <- c(ca(LRallTable), ca(LassoTable), ca(KnnTable), ca(RFtable),
+           ca(SVMtable), ca(NBtable))
 precisionall <- c(precision(LRallTable), precision(LassoTable),
-                  precision(KnnTable), precision(RFtable))
+                  precision(KnnTable), precision(RFtable),
+                  precision(SVMtable), precision(NBtable))
 sensitivityall <- c(sensitivity(LRallTable), sensitivity(LassoTable),
-                    sensitivity(KnnTable), sensitivity(RFtable))
+                    sensitivity(KnnTable), sensitivity(RFtable),
+                    sensitivity(SVMtable), sensitivity(NBtable))
 specificityall <- c(specificity(LRallTable), specificity(LassoTable),
-                    specificity(KnnTable), specificity(RFtable))
+                    specificity(KnnTable), specificity(RFtable),
+                    specificity(SVMtable), specificity(NBtable))
 f1all <- f1(precisionall, sensitivityall)
 result <- data.frame('Method'=method,
                      'CA'=round(caall, 3),
