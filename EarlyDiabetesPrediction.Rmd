@@ -15,7 +15,7 @@ library(e1071)
 library(randomForest)
 library(pROC)
 library(ggplot2)
-library(neuralnet)
+library(JOUSBoost)
 ```
 
 **Abstract**: To predict the likelihood of having diabetes on the basis of current symptoms, I plan to apply logistic regression, penalized logistic regression, random forest and KNN on the dataset, which contains the sign and symptoms of newly diabetic or would be diabetic patient. In this work, I plan to use such a dataset of 520 instances and 17 variables. 10-fold cross-validation techniques would be used for validation and to tune parameters. Finally, a commonly accessible, user-friendly tool for the end-user to check the risk of having diabetes from assessing the symptoms and useful tips to control the risk factors would be proposed.
@@ -330,6 +330,29 @@ In this section, we present the modeling results. The confusion matrix of each m
     colnames(NBtable) <- c('Negative', 'Positive')
     knitr::kable(addmargins(NBtable),
                  caption = 'Confusion matrix of naive Bayes classifier')
+    ```
+
+-   In the seventh trail, we apply AdaBoost model, an ensemble method which fits weak models (here we use decision tree with depth 3) iteratively such that the training of model at a given step depends on the models fitted at the previous steps. It correctly predicts 509 instances out of 520, with a success rate of 97.88%. Table 10 presents 197 true negatives against 8 false negatives and 312 true positives against 3 false positives.
+
+    ```{r}
+    Adaall <- data.frame('Class'=NA, 'Prediction'=NA)
+    for(i in 1:k){
+      TrainDiabetes <- diabetesKnn[split.sample!=i, ]
+      TestDiabetes <- diabetesKnn[split.sample==i, ]
+      Adamodel <- adaboost(as.matrix(TrainDiabetes[, -17]), 
+                           (as.numeric(TrainDiabetes[, 17])-1)*2-1,
+                           tree_depth = 3, n_rounds = 50)
+      Adaprediction <- predict(Adamodel, 
+                               as.matrix(TestDiabetes[, -17]))
+      Adaprediction <- as.factor((Adaprediction + 1)/2)
+      Adaall <- rbind(Adaall, data.frame('Class'=TestDiabetes[, 17],
+                                       'Prediction'=Adaprediction))
+      }
+    Adatable <- table(Adaall)
+    rownames(Adatable) <- c('Negative', 'Positive')
+    colnames(Adatable) <- c('Negative', 'Positive')
+    knitr::kable(addmargins(Adatable),
+                 caption = 'Confusion matrix of AdaBoost')
     ```
 
 -   We compared each method based on several performance metrics including CA (classification accuracy), precision, sensitivity, specificity, and F1 score, which is presented in Table 10. We choose different metric for a different clinical purposes. Here we use the F1 score as the measurement and Figure 2 shows that random forest is the best among all the methods for this prediction problem  with F1 score of 0.98 and naive Bayes scored the lowest F1 score with 0.896.
