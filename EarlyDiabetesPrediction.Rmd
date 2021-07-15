@@ -16,6 +16,7 @@ library(randomForest)
 library(pROC)
 library(ggplot2)
 library(JOUSBoost)
+library(xgboost)
 ```
 
 **Abstract**: To predict the likelihood of having diabetes on the basis of current symptoms, I plan to apply logistic regression, penalized logistic regression, random forest and KNN on the dataset, which contains the sign and symptoms of newly diabetic or would be diabetic patient. In this work, I plan to use such a dataset of 520 instances and 17 variables. 10-fold cross-validation techniques would be used for validation and to tune parameters. Finally, a commonly accessible, user-friendly tool for the end-user to check the risk of having diabetes from assessing the symptoms and useful tips to control the risk factors would be proposed.
@@ -355,7 +356,31 @@ In this section, we present the modeling results. The confusion matrix of each m
                  caption = 'Confusion matrix of AdaBoost')
     ```
 
--   We compared each method based on several performance metrics including CA (classification accuracy), precision, sensitivity, specificity, and F1 score, which is presented in Table 10. We choose different metric for a different clinical purposes. Here we use the F1 score as the measurement and Figure 2 shows that random forest is the best among all the methods for this prediction problem  with F1 score of 0.98 and naive Bayes scored the lowest F1 score with 0.896.
+-   In the eighth trail, we apply gradient boosting method, also an ensemble method using gradient decent to aggregate the weak learners (here we also use tree model with depth 3). It correctly predicts 507 instances out of 520, with a success rate of 97.5%. Table 11 presents 196 true negatives against 9 false negatives and 311 true positives against 4 false positives.
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+    GBall <- data.frame('Class'=NA, 'Prediction'=NA)
+    for(i in 1:k){
+      TrainDiabetes <- diabetesKnn[split.sample!=i, ]
+      TestDiabetes <- diabetesKnn[split.sample==i, ]
+      GBmodel <- xgboost(data = as.matrix(TrainDiabetes[, -17]),
+                         label = as.numeric(TrainDiabetes[, 17])-1,
+                         max_depth = 3, nrounds = 100,
+                         objective = 'binary:logistic',
+                         eval_metric = 'logloss')
+      GBprediction <- predict(GBmodel, as.matrix(TestDiabetes[, -17]))
+      GBprediction <- as.factor(ifelse(GBprediction > 0.5, 1, 0))
+      GBall <- rbind(GBall, data.frame('Class'=TestDiabetes[, 17],
+                                       'Prediction'=GBprediction))
+      }
+    GBtable <- table(GBall)
+    rownames(GBtable) <- c('Negative', 'Positive')
+    colnames(GBtable) <- c('Negative', 'Positive')
+    knitr::kable(addmargins(GBtable),
+                 caption = 'Confusion matrix of gradient boosting')
+    ```
+    
+-   We compared each method based on several performance metrics including CA (classification accuracy), precision, sensitivity, specificity, and F1 score, which is presented in Table 12. We choose different metric for a different clinical purposes. Here we use the F1 score as the measurement and Figure 2 shows that random forest is the best among all the methods for this prediction problem  with F1 score of 0.98 and naive Bayes scored the lowest F1 score with 0.896.
     
     ```{r barplot, fig.cap='F1 score comparison', fig.height=3, fig.width=5, fig.align='center'}
     # compare result
