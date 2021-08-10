@@ -15,7 +15,7 @@ library(e1071)
 library(randomForest)
 library(pROC)
 library(ggplot2)
-library(JOUSBoost)
+library(adabag)
 library(xgboost)
 ```
 
@@ -333,19 +333,17 @@ In this section, we present the modeling results. The confusion matrix of each m
                  caption = 'Confusion matrix of naive Bayes classifier')
     ```
 
--   In the seventh trail, we apply AdaBoost model, an ensemble method which fits weak models (here we use decision tree with depth 3) iteratively such that the training of model at a given step depends on the models fitted at the previous steps. It correctly predicts 509 instances out of 520, with a success rate of 97.88%. Table 10 presents 197 true negatives against 8 false negatives and 312 true positives against 3 false positives.
+-   In the seventh trail, we apply AdaBoost model, an ensemble method which fits weak models (here we use decision tree with depth 3) iteratively such that the training of model at a given step depends on the models fitted at the previous steps. It correctly predicts 507 instances out of 520, with a success rate of 97.5%. Table 10 presents 195 true negatives against 8 false negatives and 312 true positives against 5 false positives.
 
     ```{r}
     Adaall <- data.frame('Class'=NA, 'Prediction'=NA)
     for(i in 1:k){
       TrainDiabetes <- diabetesKnn[split.sample!=i, ]
       TestDiabetes <- diabetesKnn[split.sample==i, ]
-      Adamodel <- adaboost(as.matrix(TrainDiabetes[, -17]), 
-                           (as.numeric(TrainDiabetes[, 17])-1)*2-1,
-                           tree_depth = 3, n_rounds = 50)
-      Adaprediction <- predict(Adamodel, 
-                               as.matrix(TestDiabetes[, -17]))
-      Adaprediction <- as.factor((Adaprediction + 1)/2)
+      Adamodel <- boosting(class~., data = TrainDiabetes, mfinal=100,
+                           control=rpart.control(maxdepth=5))
+      Adaprediction <- predict.boosting(Adamodel, TestDiabetes[, -17])
+      Adaprediction <- as.factor(Adaprediction$class)
       Adaall <- rbind(Adaall, data.frame('Class'=TestDiabetes[, 17],
                                        'Prediction'=Adaprediction))
       }
@@ -380,23 +378,26 @@ In this section, we present the modeling results. The confusion matrix of each m
                  caption = 'Confusion matrix of gradient boosting')
     ```
     
--   We compared each method based on several performance metrics including CA (classification accuracy), precision, sensitivity, specificity, and F1 score, which is presented in Table 12. We choose different metric for a different clinical purposes. Here we use the F1 score as the measurement and Figure 2 shows that random forest is the best among all the methods for this prediction problem  with F1 score of 0.98 and naive Bayes scored the lowest F1 score with 0.896.
+-   We compared each method based on several performance metrics including CA (classification accuracy), precision, sensitivity, specificity, and F1 score, which is presented in Table 12. We choose different metric for a different clinical purposes. Here we use the F1 score as the measurement and Figure 2 shows that random forest, gradient boosting and AdaBoost are the best among all the methods for this prediction problem with F1 score of 0.98 and naive Bayes scored the lowest F1 score with 0.896.
     
     ```{r barplot, fig.cap='F1 score comparison', fig.height=3, fig.width=5, fig.align='center'}
     # compare result
     method <- c('Logistic regression', 'Lasso', 'KNN', 'Random forest',
-                'SVM', 'Naive Bayes')
+                'SVM', 'Naive Bayes', 'AdaBoost', 'Gradient boosting')
     caall <- c(ca(LRallTable), ca(LassoTable), ca(KnnTable), ca(RFtable),
-               ca(SVMtable), ca(NBtable))
+               ca(SVMtable), ca(NBtable), ca(Adatable), ca(GBtable))
     precisionall <- c(precision(LRallTable), precision(LassoTable),
                       precision(KnnTable), precision(RFtable),
-                      precision(SVMtable), precision(NBtable))
+                      precision(SVMtable), precision(NBtable),
+                      precision(Adatable), precision(GBtable))
     sensitivityall <- c(sensitivity(LRallTable), sensitivity(LassoTable),
                         sensitivity(KnnTable), sensitivity(RFtable),
-                        sensitivity(SVMtable), sensitivity(NBtable))
+                        sensitivity(SVMtable), sensitivity(NBtable),
+                        sensitivity(Adatable), sensitivity(GBtable))
     specificityall <- c(specificity(LRallTable), specificity(LassoTable),
                         specificity(KnnTable), specificity(RFtable),
-                        specificity(SVMtable), specificity(NBtable))
+                        specificity(SVMtable), specificity(NBtable),
+                        specificity(Adatable), specificity(GBtable))
     f1all <- f1(precisionall, sensitivityall)
     result <- data.frame('Method'=method,
                          'CA'=round(caall, 3),
@@ -411,20 +412,24 @@ In this section, we present the modeling results. The confusion matrix of each m
       geom_col(mapping = aes(x=Method, y=F1.score))
     ```
 
--   We also rank the importance of each variable in this dataset from the random forest model. Figure 3 presents that Polyuria and Polydipsia are the top 2 most important variables in predicting early stage diabetes among all the participants, which means that the two symptoms are the most prevalent among the newly diabetic participants. Age and Gender are the top 4, muscle.stiffness and obesity are the least important.
+-   We also rank the importance of each variable in this dataset from the random forest model and AdaBoost. Figure 3 presents that for random forest, Polyuria and Polydipsia are the top 2 most important variables in predicting early stage diabetes among all the participants, which means that the two symptoms are the most prevalent among the newly diabetic participants. Age and Gender are the top 4, muscle.stiffness and obesity are the least important. For AdaBoost, Age is the most important variable, Alopecia, Gender, Polydipsia and Polyuria are the following important variables, which is shown in Figure 5. In conclusion, Age, Gender, Polyuria and Polydipsia are very common symptoms in early stage diabetic patients.
 
     ```{r variable, fig.cap='Importance of variables from random forest model', fig.height=5, fig.width=5, fig.align='center'}
     varImpPlot(RFmodel, type=2)
     ```
 
+    ```{r variable, fig.cap='Importance of variables from random forest model', fig.height=3, fig.width=8, fig.align='center'}
+    importanceplot(Adamodel)
+    ```
+
 # Conclusion
 
-When dealing with diseases such as diabetes it is essential to provide an early and accurate diagnosis. A delayed diagnosis of diabetes can lead to severe health consequences if vigilance is not applied. So, the prediction model must be as highly accurate as possible. The cost of a false negative is enormously higher than a false positive. Random forest is the best with a F1 score of 0.98 from this perspective because it has the lowest false-negative rate (5 false negatives over 200 predicted negatives).
+When dealing with diseases such as diabetes it is essential to provide an early and accurate diagnosis. A delayed diagnosis of diabetes can lead to severe health consequences if vigilance is not applied. So, the prediction model must be as highly accurate as possible. Random forest, AdaBoost, gradient boosting are the best with a F1 score of 0.98 from this perspective.
 
 Logistic regression and lasso require the observations to be independent of each other. In other words, the observations should not come from repeated measurements or matched data. This assumption would be violated when different participants come from the same family. This could also be one limitation of this dataset. KNN is a nonparametric learning algorithm. It does not make any assumptions on the underlying data distribution. But it assumes that similar things exist in close proximity since we compute the euclidean distance between observations. In random forest, we don't need to make any assumptions at all. It has no model underneath, and the only assumption that it relies upon is that sampling is representative. But this is usually a common assumption. As for naive Bayes classifier, it assumes an independence relationship between variables.
 
 All the studies have their own limitations. For this project, a larger dataset is needed to better perform cross-validation and the performance of each model. This data does not consider family history of diabetes, consumption of certain prescription drugs, smoking, and sleep deprivation, which are both predictors of diabetes. All the data come from the patients of Sylhet Diabetes Hospital in Sylhet, Bangladesh, thus the results might be only applicable for patients living in that area. The best model here is random forest. While it may fit best for this data set, it might not be the case when applied to another.
         
-Some of the methods like KNN don't generate interpretable results or present a clear explanation of the parameters used. Even though random forest achieves the best performance among the other 3 methods, it is not an interpretable one. This is because that random forest is generated using bootstrapping many trees and the prediction result is averaged over these trees.
+Some of the methods like KNN don't generate interpretable results or present a clear explanation of the parameters used. Even though random forest achieves the best performance among the other 3 methods, it is not an interpretable one. This is because that random forest is generated using bootstrapping many trees and the prediction result is averaged over these trees. The same if for AdaBoost and gradient boosting.
 
-Severe acute respiratory syndrome SARS-CoV-2 is the virus responsible for the coronavirus disease 2019 (COVID-19). This pandemic is still going on today. The future focus of this project could be the impact of COVID-19 on the early stage diabetes diagnosis. It is reasonable and meaningful because, during this pandemic, most of the medical resources are taken by respiratory patients, people are required to stay at home. In general, people with diabetes are more likely to have severe symptoms and complications when infected with any virus, combined with other chronic conditions such as heart disease, which increases their risk of getting those severe complications if infected with COVID-19. If such data is available, I think it would be an interesting topic.
+Severe acute respiratory syndrome SARS-CoV-2 is the virus responsible for the coronavirus disease 2019 (COVID-19). This pandemic is still going on today. The future focus of this project could be the impact of COVID-19 on the early stage diabetes diagnosis. It is reasonable and meaningful because, during this pandemic, most of the medical resources are taken by respiratory patients, people are required to stay at home. In general, people with diabetes are more likely to have severe symptoms and complications when infected with any virus, combined with other chronic conditions such as heart disease, which increases their risk of getting those severe complications if infected with COVID-19. It would be an interesting topic and worth researching if such data is available, .
